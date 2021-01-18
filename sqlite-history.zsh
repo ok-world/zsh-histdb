@@ -80,10 +80,12 @@ _histdb_init () {
         _histdb_query <<-EOF
 create table commands (id integer primary key autoincrement, argv text, unique(argv) on conflict ignore);
 create table places   (id integer primary key autoincrement, host text, dir text, unique(host, dir) on conflict ignore);
+create table users    (id integer primary key autoincrement, hash text, name text, unique(hash, name) on conflict ignore);
 create table history  (id integer primary key autoincrement,
                        session int,
                        command_id int references commands (id),
                        place_id int references places (id),
+                       user_id int references users (id),
                        exit_status int,
                        start_time int,
                        duration int);
@@ -103,6 +105,7 @@ EOF
 create index if not exists hist_time on history(start_time);
 create index if not exists place_dir on places(dir);
 create index if not exists place_host on places(host);
+create index if not exists user_hash on users(hash);
 create index if not exists history_command_place on history(command_id, place_id);
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous=normal;
@@ -151,19 +154,22 @@ _histdb_addhistory () {
         _histdb_query_batch <<EOF &|
 insert into commands (argv) values (${cmd});
 insert into places   (host, dir) values (${HISTDB_HOST}, ${pwd});
+insert into users    (hash, name) values ('${SSH_HASH}', '${SSH_NAME}');
 insert into history
-  (session, command_id, place_id, start_time)
+  (session, command_id, place_id, user_id, start_time)
 select
   ${HISTDB_SESSION},
   commands.id,
   places.id,
+  users.id,
   ${started}
 from
-  commands, places
+  commands, places, users
 where
   commands.argv = ${cmd} and
   places.host = ${HISTDB_HOST} and
-  places.dir = ${pwd}
+  places.dir = ${pwd} and
+  users.hash = '${SSH_HASH}'
 ;
 EOF
     fi
@@ -263,8 +269,8 @@ histdb () {
     --limit n  only show n rows. defaults to $LINES or 25
     --status x only show rows with exit status x. Can be 'error' to find all nonzero."
 
-    local selcols="session as ses, dir"
-    local cols="session, replace(places.dir, '$HOME', '~') as dir"
+    local selcols="session as ses, dir, run_by"
+    local cols="session, replace(places.dir, '$HOME', '~') as dir, users.name as run_by"
     local where="1"
     if [[ -p /dev/stdout ]]; then
         local limit=""
@@ -421,6 +427,7 @@ from
   commands 
   join history on history.command_id = commands.id
   join places on history.place_id = places.id
+  join users on history.user_id = users.id
 where ${where}
 group by history.command_id, history.place_id
 order by max_start ${r_order}
@@ -432,6 +439,7 @@ from
   commands
   join history on history.command_id = commands.id
   join places  on history.place_id = places.id
+  join users on history.user_id = users.id
 where ${where}
 group by history.command_id, history.place_id
 order by max_start desc) order by max_start ${orderdir}"

@@ -1,6 +1,15 @@
 #+TITLE:ZSH History Database
 
 * News
+- 18/01/21 :: Added table and fixed SQL query to save username (from SSH key at .ssh/authorized_keys). You have to declare 2 environment variables SSH_HASH and SSH_NAME to work properly.
+Add to the ~.zshrc~ file few command rows:
+#+BEGIN_SRC zsh
+typeset -g SSH_SES=`echo $SSH_CONNECTION | awk '{print $2}'`
+typeset -g SSH_HASH=`tail /var/log/sshdusers.log | grep ${SSH_SES} |  awk '{ print $16 }'`
+typeset -g SSH_NAME=`ssh-keygen -l -f $HOME/.ssh/authorized_keys | grep $SSH_HASH | awk '{ name=$3" "$4; print name }'`
+source $HOME/.oh-my-zsh/custom/plugins/zsh-histdb/sqlite-history.zsh
+autoload -Uz add-zsh-hook
+#+END_SRC
 - 30/06/20 :: Thanks to rolandwalker, add-zsh-hook is used so histdb is a better citizen.
   Thanks to GreenArchon and phiresky the sqlite helper process is terminated on exit better, and the WAL is truncated before doing histdb sync. This should make things behave a bit better. Thanks to gabreal (and others, I think), some things have been changed to ~declare -ga~ which helps when using antigen or somesuch? Thanks to sheperdjerred and fuero there is now a file which might make antigen and oh-my-zsh work.
 
